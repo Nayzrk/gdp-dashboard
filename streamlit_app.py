@@ -39,7 +39,7 @@ prices_data = fetch_api_data("prices", params={"filter": "all", "limit": 5})
 
 # --- HEADER SECTION ---
 st.title("📊 ClickOptions | Growth & Conversion Dashboard")
-st.caption(f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | Assigned to: Yoan | Deadline: June 22, 2026")
+st.caption(f"Last updated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 st.markdown("---")
 
 # --- NAVIGATION VIA TABS ---
