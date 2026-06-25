@@ -3,6 +3,8 @@ import requests
 import pandas as pd
 import plotly.express as px
 from datetime import datetime
+import time
+from datetime import timezone, timedelta
 
 # --- PAGE CONFIGURATION ---
 st.set_page_config(
@@ -19,8 +21,8 @@ HEADERS = {
     "accept": "application/json"
 }
 
-# --- DATA FETCHING UTILITIES (From Jupyter Notebook) ---
-@st.cache_data(ttl=300)  # 5-minute cache to respect working principles of reliability and efficiency
+# --- DATA FETCHING UTILITIES ---
+@st.cache_data(ttl=300)
 def fetch_api_data(endpoint, params=None):
     try:
         r = requests.get(f"{BASE_URL}/{endpoint}", headers=HEADERS, params=params, timeout=20)
@@ -30,7 +32,7 @@ def fetch_api_data(endpoint, params=None):
         st.error(f"Error fetching data from endpoint /{endpoint}: {e}")
         return None
 
-# Pre-fetching all required data payloads
+# Pre-fetching initial data payloads
 kpis_data = fetch_api_data("kpis", params={"filter": "all"})
 analytics_data = fetch_api_data("analytics")
 funnel_report_data = fetch_api_data("funnel-report")
@@ -206,49 +208,38 @@ with tab2:
             st.error("The raw API data is missing the 'source' reference column.")
     else:
         st.warning("Funnel report rows are unavailable to split channel tracking codes.")
+
 # ==========================================
-# TAB 3: TRAFFIC CHANNEL ATTRIBUTION & AFFILIATE MATRIX (WITH FILTER)
+# TAB 3: TRAFFIC CHANNEL ATTRIBUTION & AFFILIATE MATRIX
 # ==========================================
 with tab3:
     st.header("📣 Traffic Channel Attribution & Affiliate Matrix")
     
-    # 1. Filtre de sélection identique à l'onglet précédent
     selected_range_tab3 = st.selectbox(
         "⏱️ Select Reporting Window (Range):",
         options=["today", "7d", "30d", "allTime"],
-        index=2,  # Par défaut sur 30d
+        index=2,
         key="tab3_range_selector"
     )
     
-    # 2. Conversion du choix textuel en Timestamps MS (requis par /api/v1/funnel-report)
-    import time
-    from datetime import datetime, timezone, timedelta
-
     now_ms = int(time.time() * 1000)
     params_report = {}
 
     if selected_range_tab3 == "today":
-        # Début de la journée à 00:00 UTC
         start_of_today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
         from_ms = int(start_of_today.timestamp() * 1000)
         params_report = {"from": from_ms, "to": now_ms}
-        
     elif selected_range_tab3 == "7d":
         from_ms = now_ms - (7 * 24 * 60 * 60 * 1000)
         params_report = {"from": from_ms, "to": now_ms}
-        
     elif selected_range_tab3 == "30d":
         from_ms = now_ms - (30 * 24 * 60 * 60 * 1000)
         params_report = {"from": from_ms, "to": now_ms}
-        
     elif selected_range_tab3 == "allTime":
-        # On force à 0 (début des temps Unix) pour contourner le défaut de 30 jours de l'API
         params_report = {"from": 0, "to": now_ms}
 
-    # 3. Appel dynamique de l'API avec les bons paramètres de dates
     funnel_report_data = fetch_api_data("funnel-report", params=params_report)
 
-    # 4. Affichage des données (Panneaux Gauche & Droite)
     left_pane, right_pane = st.columns(2)
     
     with left_pane:
