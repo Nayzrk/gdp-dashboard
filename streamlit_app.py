@@ -39,7 +39,7 @@ prices_data = fetch_api_data("prices", params={"filter": "all", "limit": 5})
 
 # --- HEADER SECTION ---
 st.title("📊 ClickOptions | Growth & Conversion Dashboard")
-st.caption(f"Last updated on : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+st.caption(f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | Assigned to: Yoan | Deadline: June 22, 2026")
 st.markdown("---")
 
 # --- NAVIGATION VIA TABS ---
@@ -59,7 +59,6 @@ with tab1:
     st.subheader("Weekly Strategic Indicators for Rapid Decision-Making")
     
     if kpis_data and funnel_report_data:
-        # Layout metrics based on Executive Overview and Suggested KPI requirements
         col1, col2, col3, col4 = st.columns(4)
         with col1:
             st.metric("Total User Base", f"{kpis_data.get('totalUsers', 0):,}")
@@ -76,12 +75,10 @@ with tab1:
             
         st.markdown("---")
         
-        # Display analysis window timeframes 
         from_date = pd.to_datetime(funnel_report_data.get("fromMs"), unit='ms')
         to_date = pd.to_datetime(funnel_report_data.get("toMs"), unit='ms')
         st.info(f"📅 **Current Report Analysis Window:** From {from_date.strftime('%Y-%m-%d')} to {to_date.strftime('%Y-%m-%d %H:%M:%S')}")
         
-        # Display global conversion platform milestones
         totals = funnel_report_data.get("totals", {})
         col_m1, col_m2, col_m3, col_m4, col_m5 = st.columns(5)
         col_m1.metric("Unique Visitors", f"{totals.get('visitors', 0):,}")
@@ -93,67 +90,162 @@ with tab1:
         st.warning("Unable to fetch executive metrics from live production APIs.")
 
 # ==========================================
-# TAB 2: CONVERSION FUNNEL ANALYSIS
+# TAB 2: CONVERSION FUNNEL ANALYSIS (DYNAMIC VERSION)
 # ==========================================
 with tab2:
     st.header("🌪️ User Journey Funnel & Drop-off Isolation")
+    
+    # 1. Ajout du filtre de période basé sur l'image IMG_3710.jpg
+    selected_range = st.selectbox(
+        "⏱️ Select Reporting Window (Range):",
+        options=["today", "7d", "30d", "allTime"],
+        index=3,  # Par défaut positionné sur "allTime" comme sur ta capture d'écran
+        key="funnel_range_selector"
+    )
+    
+    # 2. Appel dynamique de l'API avec le paramètre 'range' sélectionné
+    analytics_data = fetch_api_data("analytics", params={"range": selected_range})
     
     if analytics_data and "funnel" in analytics_data:
         stages = analytics_data["funnel"]["stages"]
         df_funnel = pd.DataFrame(stages)
         
-        # Calculate rates dynamically based on assignment requirements
-        df_funnel['Global Conv Rate (%)'] = (df_funnel['count'] / df_funnel['count'].iloc[0] * 100).round(2)
-        df_funnel['Drop vs Previous Stage (%)'] = (df_funnel['count'].pct_change() * 100).round(2).fillna(0)
+        # Sécurité : On vérifie si le tableau n'est pas vide (ex: si 'today' n'a pas encore de données)
+        if not df_funnel.empty:
+            # Calcul des taux de conversion
+            df_funnel['Global Conv Rate (%)'] = (df_funnel['count'] / df_funnel['count'].iloc[0] * 100).round(2)
+            df_funnel['Drop vs Previous Stage (%)'] = (df_funnel['count'].pct_change() * 100).round(2).fillna(0)
+            
+            # Graphique interactif Plotly mis à jour automatiquement
+            fig = px.funnel(
+                df_funnel, 
+                x='count', 
+                y='name', 
+                title=f"Platform Interactive Conversion Funnel Flow ({selected_range})",
+                labels={'count': 'User Count', 'name': 'Funnel Stage'},
+                color_discrete_sequence=['#1E3A8A']
+            )
+            st.plotly_chart(fig, use_container_width=True)
+            
+            st.subheader("Funnel Analytical Performance Ledger")
+            st.dataframe(df_funnel, use_container_width=True, hide_index=True)
+            
+            st.subheader("🚨 Automated Funnel Drop-off Identification")
+            worst_drop = df_funnel.sort_values(by='Drop vs Previous Stage (%)').iloc[0]
+            st.error(
+                f"**The main friction point for the range '{selected_range}' occurs at the stage: '{worst_drop['name']}'** "
+                f"with a drop of **{worst_drop['Drop vs Previous Stage (%)']}%** relative to its prior checkpoint. "
+                f"Product development and customer onboarding priority flags should target this specific lifecycle block."
+            )
+        else:
+            st.info(f"No user activity data recorded yet for the selected range: '{selected_range}'.")
+            
+        # --- Section Discord (Ajoutée précédemment) ---
+        st.markdown("---")
+        st.subheader("👾 Focused Channel Funnel: Discord Traffic Breakdown")
         
-        # Plotly Funnel Chart
-        fig = px.funnel(
-            df_funnel, 
-            x='count', 
-            y='name', 
-            title="Platform Interactive Conversion Funnel Flow",
-            labels={'count': 'User Count', 'name': 'Funnel Stage'},
-            color_discrete_sequence=['#1E3A8A']
-        )
-        st.plotly_chart(fig, use_container_width=True)
+        discord_stats = {"visitors": 0, "signups": 0, "deposited": 0, "realTraded": 0}
+        discord_row_found = False
         
-        # Data table for detailed inspection
-        st.subheader("Funnel Analytical Performance Ledger")
-        st.dataframe(df_funnel, use_container_width=True, hide_index=True)
+        if funnel_report_data and "rows" in funnel_report_data:
+            df_channels_check = pd.DataFrame(funnel_report_data["rows"])
+            if "source" in df_channels_check.columns:
+                df_discord = df_channels_check[df_channels_check["source"].str.lower().str.contains("discord", na=False)]
+                if not df_discord.empty:
+                    discord_row_found = True
+                    discord_stats["visitors"] = int(df_discord["visitors"].sum())
+                    discord_stats["signups"] = int(df_discord["signups"].sum())
+                    if "deposited" in df_discord.columns:
+                        discord_stats["deposited"] = int(df_discord["deposited"].sum())
+                    if "realTraded" in df_discord.columns:
+                        discord_stats["realTraded"] = int(df_discord["realTraded"].sum())
+
+        disc_col1, disc_col2, disc_col3, disc_col4 = st.columns(4)
+        disc_col1.metric("Discord Visitors", f"{discord_stats['visitors']:,}")
+        disc_col2.metric("Discord Signups", f"{discord_stats['signups']:,}")
+        disc_col3.metric("Discord Depositors", f"{discord_stats['deposited']:,}")
+        disc_col4.metric("Discord Active Live Traders", f"{discord_stats['realTraded']:,}")
         
-        # Automatic drop-off diagnostic note
-        st.subheader("🚨 Automated Funnel Drop-off Identification")
-        worst_drop = df_funnel.sort_values(by='Drop vs Previous Stage (%)').iloc[0]
-        st.error(
-            f"**The main friction point in the user flow occurs at the stage: '{worst_drop['name']}'** "
-            f"with a drop of **{worst_drop['Drop vs Previous Stage (%)']}%** relative to its prior checkpoint. "
-            f"Product development and customer onboarding priority flags should target this specific lifecycle block."
-        )
+        if discord_row_found:
+            discord_funnel_data = pd.DataFrame({
+                "Stage": ["Visits", "Signups", "Deposits", "Live Trades"],
+                "Count": [discord_stats["visitors"], discord_stats["signups"], discord_stats["deposited"], discord_stats["realTraded"]]
+            })
+            fig_discord = px.funnel(
+                discord_funnel_data, x="Count", y="Stage",
+                title=f"Discord Isolated User Journey Funnel ({selected_range})",
+                color_discrete_sequence=['#5865F2']
+            )
+            st.plotly_chart(fig_discord, use_container_width=True)
+        else:
+            st.warning("⚠️ Data Map Warning: No explicit user conversions attributed to Discord in this report window.")
+            
     else:
         st.warning("Funnel analytical data structures are unavailable at this moment.")
 
 # ==========================================
-# TAB 3: ACQUISITION & KOL PERFORMANCE
+# TAB 3: TRAFFIC CHANNEL ATTRIBUTION & AFFILIATE MATRIX (WITH FILTER)
 # ==========================================
 with tab3:
     st.header("📣 Traffic Channel Attribution & Affiliate Matrix")
     
+    # 1. Filtre de sélection identique à l'onglet précédent
+    selected_range_tab3 = st.selectbox(
+        "⏱️ Select Reporting Window (Range):",
+        options=["today", "7d", "30d", "allTime"],
+        index=2,  # Par défaut sur 30d
+        key="tab3_range_selector"
+    )
+    
+    # 2. Conversion du choix textuel en Timestamps MS (requis par /api/v1/funnel-report)
+    import time
+    from datetime import datetime, timezone, timedelta
+
+    now_ms = int(time.time() * 1000)
+    params_report = {}
+
+    if selected_range_tab3 == "today":
+        # Début de la journée à 00:00 UTC
+        start_of_today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        from_ms = int(start_of_today.timestamp() * 1000)
+        params_report = {"from": from_ms, "to": now_ms}
+        
+    elif selected_range_tab3 == "7d":
+        from_ms = now_ms - (7 * 24 * 60 * 60 * 1000)
+        params_report = {"from": from_ms, "to": now_ms}
+        
+    elif selected_range_tab3 == "30d":
+        from_ms = now_ms - (30 * 24 * 60 * 60 * 1000)
+        params_report = {"from": from_ms, "to": now_ms}
+        
+    elif selected_range_tab3 == "allTime":
+        # On force à 0 (début des temps Unix) pour contourner le défaut de 30 jours de l'API
+        params_report = {"from": 0, "to": now_ms}
+
+    # 3. Appel dynamique de l'API avec les bons paramètres de dates
+    funnel_report_data = fetch_api_data("funnel-report", params=params_report)
+
+    # 4. Affichage des données (Panneaux Gauche & Droite)
     left_pane, right_pane = st.columns(2)
     
     with left_pane:
         st.subheader("🌐 Acquisition Channels Matrix")
         if funnel_report_data and "rows" in funnel_report_data:
             df_channels = pd.DataFrame(funnel_report_data["rows"])
-            df_channels = df_channels.sort_values(by="signups", ascending=False)
-            st.dataframe(df_channels, use_container_width=True, hide_index=True)
             
-            fig_channels = px.bar(
-                df_channels.head(10), x='source', y='signups', 
-                title="Top 10 Channels by Total Reg. Signups",
-                labels={'signups': 'Total Registrations', 'source': 'Attributed Channel'},
-                color_discrete_sequence=['#10B981']
-            )
-            st.plotly_chart(fig_channels, use_container_width=True)
+            if not df_channels.empty and "signups" in df_channels.columns:
+                df_channels = df_channels.sort_values(by="signups", ascending=False)
+                st.dataframe(df_channels, use_container_width=True, hide_index=True)
+                
+                fig_channels = px.bar(
+                    df_channels.head(10), x='source', y='signups', 
+                    title=f"Top 10 Channels by Total Reg. Signups ({selected_range_tab3})",
+                    labels={'signups': 'Total Registrations', 'source': 'Attributed Channel'},
+                    color_discrete_sequence=['#10B981']
+                )
+                st.plotly_chart(fig_channels, use_container_width=True)
+            else:
+                st.info(f"No active channel traffic found for the range '{selected_range_tab3}'.")
         else:
             st.info("No recorded channel traffic data logs returned.")
             
@@ -161,16 +253,20 @@ with tab3:
         st.subheader("👥 KOL & Affiliate Performance (Anonymized Codes)")
         if funnel_report_data and "affiliates" in funnel_report_data:
             df_affiliates = pd.DataFrame(funnel_report_data["affiliates"])
-            df_affiliates = df_affiliates.sort_values(by="signups", ascending=False)
-            st.dataframe(df_affiliates, use_container_width=True, hide_index=True)
             
-            fig_aff = px.bar(
-                df_affiliates.head(10), x='source', y='signups', 
-                title="Top 10 Affiliates by Signups Generated",
-                labels={'signups': 'Signups Count', 'source': 'Affiliate Code ID'},
-                color_discrete_sequence=['#F59E0B']
-            )
-            st.plotly_chart(fig_aff, use_container_width=True)
+            if not df_affiliates.empty and "signups" in df_affiliates.columns:
+                df_affiliates = df_affiliates.sort_values(by="signups", ascending=False)
+                st.dataframe(df_affiliates, use_container_width=True, hide_index=True)
+                
+                fig_aff = px.bar(
+                    df_affiliates.head(10), x='source', y='signups', 
+                    title=f"Top 10 Affiliates by Signups Generated ({selected_range_tab3})",
+                    labels={'signups': 'Signups Count', 'source': 'Affiliate Code ID'},
+                    color_discrete_sequence=['#F59E0B']
+                )
+                st.plotly_chart(fig_aff, use_container_width=True)
+            else:
+                st.info(f"No affiliate conversions found for the range '{selected_range_tab3}'.")
         else:
             st.info("No partner or influencer affiliate rows returned.")
 
@@ -221,9 +317,6 @@ with tab4:
 with tab5:
     st.header("📋 Requirement Compliance Map & Strategic Tracking Gaps List")
     
-    # 1. Data Source Mapping & Audit (Addressing Deliverable 1 & 3)
-    st.subheader("🔍 1. Live Data Availability Map Audit Log")
-    
     status_matrix = {
         "Metric Segment / Data Requirement": [
             "Platform Funnel & Conversions Flow", 
@@ -267,7 +360,6 @@ with tab5:
     
     st.markdown("---")
     
-    # 2. Executive Cadrage Diagnosis Note (Addressing Deliverable 4 & Working Principles)
     st.subheader("💡 2. Strategic Launch Note & Initial Diagnosis Report")
     st.markdown(
         """
