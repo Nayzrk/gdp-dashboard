@@ -90,33 +90,30 @@ with tab1:
         st.warning("Unable to fetch executive metrics from live production APIs.")
 
 # ==========================================
-# TAB 2: CONVERSION FUNNEL ANALYSIS (DYNAMIC VERSION)
+# TAB 2: CONVERSION FUNNEL ANALYSIS
 # ==========================================
 with tab2:
     st.header("🌪️ User Journey Funnel & Drop-off Isolation")
     
-    # 1. Ajout du filtre de période basé sur l'image IMG_3710.jpg
+    # 1. Filtre de période (Déjà existant)
     selected_range = st.selectbox(
         "⏱️ Select Reporting Window (Range):",
         options=["today", "7d", "30d", "allTime"],
-        index=3,  # Par défaut positionné sur "allTime" comme sur ta capture d'écran
+        index=3,
         key="funnel_range_selector"
     )
     
-    # 2. Appel dynamique de l'API avec le paramètre 'range' sélectionné
+    # 2. Récupération dynamique du Funnel Global
     analytics_data = fetch_api_data("analytics", params={"range": selected_range})
     
     if analytics_data and "funnel" in analytics_data:
         stages = analytics_data["funnel"]["stages"]
         df_funnel = pd.DataFrame(stages)
         
-        # Sécurité : On vérifie si le tableau n'est pas vide (ex: si 'today' n'a pas encore de données)
         if not df_funnel.empty:
-            # Calcul des taux de conversion
             df_funnel['Global Conv Rate (%)'] = (df_funnel['count'] / df_funnel['count'].iloc[0] * 100).round(2)
             df_funnel['Drop vs Previous Stage (%)'] = (df_funnel['count'].pct_change() * 100).round(2).fillna(0)
             
-            # Graphique interactif Plotly mis à jour automatiquement
             fig = px.funnel(
                 df_funnel, 
                 x='count', 
@@ -139,50 +136,76 @@ with tab2:
             )
         else:
             st.info(f"No user activity data recorded yet for the selected range: '{selected_range}'.")
-            
-        # --- Section Discord (Ajoutée précédemment) ---
-        st.markdown("---")
-        st.subheader("👾 Focused Channel Funnel: Discord Traffic Breakdown")
-        
-        discord_stats = {"visitors": 0, "signups": 0, "deposited": 0, "realTraded": 0}
-        discord_row_found = False
-        
-        if funnel_report_data and "rows" in funnel_report_data:
-            df_channels_check = pd.DataFrame(funnel_report_data["rows"])
-            if "source" in df_channels_check.columns:
-                df_discord = df_channels_check[df_channels_check["source"].str.lower().str.contains("discord", na=False)]
-                if not df_discord.empty:
-                    discord_row_found = True
-                    discord_stats["visitors"] = int(df_discord["visitors"].sum())
-                    discord_stats["signups"] = int(df_discord["signups"].sum())
-                    if "deposited" in df_discord.columns:
-                        discord_stats["deposited"] = int(df_discord["deposited"].sum())
-                    if "realTraded" in df_discord.columns:
-                        discord_stats["realTraded"] = int(df_discord["realTraded"].sum())
-
-        disc_col1, disc_col2, disc_col3, disc_col4 = st.columns(4)
-        disc_col1.metric("Discord Visitors", f"{discord_stats['visitors']:,}")
-        disc_col2.metric("Discord Signups", f"{discord_stats['signups']:,}")
-        disc_col3.metric("Discord Depositors", f"{discord_stats['deposited']:,}")
-        disc_col4.metric("Discord Active Live Traders", f"{discord_stats['realTraded']:,}")
-        
-        if discord_row_found:
-            discord_funnel_data = pd.DataFrame({
-                "Stage": ["Visits", "Signups", "Deposits", "Live Trades"],
-                "Count": [discord_stats["visitors"], discord_stats["signups"], discord_stats["deposited"], discord_stats["realTraded"]]
-            })
-            fig_discord = px.funnel(
-                discord_funnel_data, x="Count", y="Stage",
-                title=f"Discord Isolated User Journey Funnel ({selected_range})",
-                color_discrete_sequence=['#5865F2']
-            )
-            st.plotly_chart(fig_discord, use_container_width=True)
-        else:
-            st.warning("⚠️ Data Map Warning: No explicit user conversions attributed to Discord in this report window.")
-            
     else:
         st.warning("Funnel analytical data structures are unavailable at this moment.")
 
+    # --- Section Social Channels (FILTRÉE ET DYNAMIQUE) ---
+    st.markdown("---")
+    st.subheader(f"📣 Consolidated Social Media Channel Funnel ({selected_range.upper()})")
+    st.info("💡 **Note:** Discord conversion traffic is now combined with X (Twitter) parameters since standard community redirect paths frequently funnel tracking attributions through the `t.co` shortener matrix.")
+    
+    # CALCUL DYNAMIQUE DES TIMESTAMPS POUR LE FUNNEL SOCIAL SELON LE FILTRE SELECTIONNÉ
+    now_ms_tab2 = int(time.time() * 1000)
+    params_social = {}
+
+    if selected_range == "today":
+        start_of_today_tab2 = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        from_ms_tab2 = int(start_of_today_tab2.timestamp() * 1000)
+        params_social = {"from": from_ms_tab2, "to": now_ms_tab2}
+    elif selected_range == "7d":
+        from_ms_tab2 = now_ms_tab2 - (7 * 24 * 60 * 60 * 1000)
+        params_social = {"from": from_ms_tab2, "to": now_ms_tab2}
+    elif selected_range == "30d":
+        from_ms_tab2 = now_ms_tab2 - (30 * 24 * 60 * 60 * 1000)
+        params_social = {"from": from_ms_tab2, "to": now_ms_tab2}
+    elif selected_range == "allTime":
+        params_social = {"from": 0, "to": now_ms_tab2}
+
+    # Appel de l'API avec les paramètres de temps dynamiques
+    social_report_data = fetch_api_data("funnel-report", params=params_social)
+    
+    if social_report_data and "rows" in social_report_data:
+        df_channels_check = pd.DataFrame(social_report_data["rows"])
+        
+        if "source" in df_channels_check.columns:
+            # Filtrage combiné Regex X + Discord
+            df_social = df_channels_check[df_channels_check["source"].str.lower().str.contains("t.co|twitter|\\bx\\b|discord", na=False)]
+            
+            social_stats = {"visitors": 0, "signups": 0, "deposited": 0, "realTraded": 0}
+            social_row_found = not df_social.empty
+            
+            if social_row_found:
+                social_stats["visitors"] = int(df_social["visitors"].sum())
+                social_stats["signups"] = int(df_social["signups"].sum())
+                if "deposited" in df_social.columns:
+                    social_stats["deposited"] = int(df_social["deposited"].sum())
+                if "realTraded" in df_social.columns:
+                    social_stats["realTraded"] = int(df_social["realTraded"].sum())
+                    
+            # Métriques alignées
+            sm1, sm2, sm3, sm4 = st.columns(4)
+            sm1.metric("Unified Social Visits", f"{social_stats['visitors']:,}")
+            sm2.metric("Unified Social Signups", f"{social_stats['signups']:,}")
+            sm3.metric("Unified Social Deposits", f"{social_stats['deposited']:,}")
+            sm4.metric("Unified Social Active Traders", f"{social_stats['realTraded']:,}")
+            
+            if social_row_found:
+                df_social_funnel = pd.DataFrame({
+                    "Stage": ["Visits", "Signups", "Deposits", "Live Trades"],
+                    "Count": [social_stats["visitors"], social_stats["signups"], social_stats["deposited"], social_stats["realTraded"]]
+                })
+                fig_social = px.funnel(
+                    df_social_funnel, x="Count", y="Stage",
+                    title=f"X & Discord Consolidated Conversion Flow Matrix ({selected_range})",
+                    color_discrete_sequence=['#5865F2']
+                )
+                st.plotly_chart(fig_social, use_container_width=True)
+            else:
+                st.warning(f"⚠️ No combined traffic logs matched 't.co', 'twitter', or 'discord' strings within the selected window '{selected_range}'.")
+        else:
+            st.error("The raw API data is missing the 'source' reference column.")
+    else:
+        st.warning("Funnel report rows are unavailable to split channel tracking codes.")
 # ==========================================
 # TAB 3: TRAFFIC CHANNEL ATTRIBUTION & AFFILIATE MATRIX (WITH FILTER)
 # ==========================================
